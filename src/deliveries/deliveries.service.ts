@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   ApprovalStatus,
   DeliveryStatus,
@@ -10,10 +11,13 @@ import {
 } from '@prisma/client';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateApprovalDto } from './dto/create-approval.dto';
 import { CreateDeliveryItemDto } from './dto/create-delivery-item.dto';
 import { CreateDeliveryDto } from './dto/create-delivery.dto';
 import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
+
+const STORAGE_PROVIDER_SUPABASE = 'supabase';
 
 const actorSelect = {
   id: true,
@@ -70,6 +74,7 @@ export class DeliveriesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activityLogs: ActivityLogsService,
+    private readonly storage: StorageService,
   ) {}
 
   async list(organizationId: string, workspaceId: string) {
@@ -269,6 +274,152 @@ export class DeliveriesService {
     });
   }
 
+  async uploadItem(
+    organizationId: string,
+    userId: string,
+    id: string,
+    file: Express.Multer.File | undefined,
+    options: { title?: string; description?: string },
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    if (!file.buffer?.length) {
+      throw new BadRequestException('File is empty');
+    }
+
+    const delivery = await this.get(organizationId, id);
+
+    if (
+      delivery.status === DeliveryStatus.COMPLETED ||
+      delivery.status === DeliveryStatus.CANCELLED
+    ) {
+      throw new BadRequestException('Delivery cannot receive more items');
+    }
+
+    const fileName = file.originalname || this.defaultFileName(delivery.title);
+    const title = this.optionalText(options.title) ?? fileName;
+    const description = this.optionalText(options.description);
+    const mimeType = file.mimetype || 'application/octet-stream';
+    const checksum = createHash('sha256').update(file.buffer).digest('hex');
+    const storageKey = [
+      'deliveries',
+      organizationId,
+      id,
+      `${Date.now()}-${randomUUID()}-${this.safeFileName(fileName)}`,
+    ].join('/');
+
+    let uploadedKey: string | null = null;
+
+    try {
+      const uploaded = await this.storage.upload({
+        key: storageKey,
+        buffer: file.buffer,
+        contentType: mimeType,
+      });
+      uploadedKey = uploaded.key;
+
+      return await this.prisma.$transaction(async (tx) => {
+        const fileAsset = await tx.fileAsset.create({
+          data: {
+            organizationId,
+            createdById: userId,
+            storageProvider: STORAGE_PROVIDER_SUPABASE,
+            storageKey: uploaded.key,
+            fileName,
+            mimeType,
+            sizeBytes: file.size,
+            checksum,
+          },
+        });
+
+        const item = await tx.deliveryItem.create({
+          data: {
+            organizationId,
+            deliveryId: delivery.id,
+            fileAssetId: fileAsset.id,
+            createdById: userId,
+            title,
+            description,
+          },
+          include: {
+            fileAsset: true,
+            createdBy: {
+              select: actorSelect,
+            },
+          },
+        });
+
+        await this.activityLogs.create(
+          {
+            organizationId,
+            workspaceId: delivery.workspaceId,
+            actorId: userId,
+            action: 'DELIVERY_FILE_UPLOADED',
+            entityType: 'DeliveryItem',
+            entityId: item.id,
+            metadata: {
+              title,
+              fileName,
+              mimeType,
+              sizeBytes: file.size,
+              deliveryId: delivery.id,
+            },
+          },
+          tx,
+        );
+
+        return item;
+      });
+    } catch (error) {
+      if (uploadedKey) {
+        await this.storage.remove(uploadedKey).catch(() => undefined);
+      }
+
+      throw error;
+    }
+  }
+
+  async createItemDownloadUrl(organizationId: string, itemId: string) {
+    const item = await this.prisma.deliveryItem.findFirst({
+      where: { id: itemId, organizationId },
+      include: { fileAsset: true },
+    });
+
+    if (!item) {
+      throw new NotFoundException('Delivery item not found');
+    }
+
+    if (item.fileAsset.publicUrl) {
+      return {
+        url: item.fileAsset.publicUrl,
+        fileName: item.fileAsset.fileName,
+        mimeType: item.fileAsset.mimeType,
+        sizeBytes: item.fileAsset.sizeBytes,
+        expiresInSeconds: null,
+      };
+    }
+
+    if (item.fileAsset.storageProvider !== STORAGE_PROVIDER_SUPABASE) {
+      throw new BadRequestException('File is not available for download');
+    }
+
+    const expiresInSeconds = 3600;
+    const url = await this.storage.createSignedUrl(
+      item.fileAsset.storageKey,
+      expiresInSeconds,
+    );
+
+    return {
+      url,
+      fileName: item.fileAsset.fileName,
+      mimeType: item.fileAsset.mimeType,
+      sizeBytes: item.fileAsset.sizeBytes,
+      expiresInSeconds,
+    };
+  }
+
   async createApproval(
     organizationId: string,
     userId: string,
@@ -389,6 +540,11 @@ export class DeliveriesService {
 
   private defaultFileName(title: string) {
     return `${this.safeFileName(title)}.pdf`;
+  }
+
+  private optionalText(value: string | undefined) {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : undefined;
   }
 
   private safeFileName(value: string) {

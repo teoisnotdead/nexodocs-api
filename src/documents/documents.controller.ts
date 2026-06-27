@@ -1,8 +1,27 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import type { AuthenticatedRequest } from '../common/types/authenticated-request';
 import { DocumentsService } from './documents.service';
 import { MockUploadDocumentDto } from './dto/mock-upload-document.dto';
 import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
+
+const fileUploadInterceptor = FileInterceptor('file', {
+  storage: memoryStorage(),
+  limits: {
+    fileSize: 25 * 1024 * 1024,
+  },
+});
 
 @Controller('document-requests/:id')
 export class DocumentRequestDocumentsController {
@@ -29,6 +48,23 @@ export class DocumentRequestDocumentsController {
       dto,
     );
   }
+
+  @Post('upload')
+  @UseInterceptors(fileUploadInterceptor)
+  upload(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('notes') notes?: string,
+  ) {
+    return this.documentsService.upload(
+      request.user!.organizationId,
+      request.user!.userId,
+      id,
+      file,
+      notes,
+    );
+  }
 }
 
 @Controller('documents')
@@ -46,6 +82,14 @@ export class DocumentsController {
       request.user!.userId,
       id,
       dto,
+    );
+  }
+
+  @Get(':id/download')
+  createDownloadUrl(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    return this.documentsService.createDownloadUrl(
+      request.user!.organizationId,
+      id,
     );
   }
 }

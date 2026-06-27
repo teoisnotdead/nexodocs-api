@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   DocumentRequestStatus,
   DocumentStatus,
@@ -10,8 +11,11 @@ import {
 } from '@prisma/client';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { MockUploadDocumentDto } from './dto/mock-upload-document.dto';
 import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
+
+const STORAGE_PROVIDER_SUPABASE = 'supabase';
 
 const documentInclude = {
   versions: {
@@ -86,6 +90,7 @@ export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activityLogs: ActivityLogsService,
+    private readonly storage: StorageService,
   ) {}
 
   async listByRequest(organizationId: string, documentRequestId: string) {
@@ -182,6 +187,157 @@ export class DocumentsService {
 
       return document;
     });
+  }
+
+  async upload(
+    organizationId: string,
+    userId: string,
+    documentRequestId: string,
+    file: Express.Multer.File | undefined,
+    notes?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    if (!file.buffer?.length) {
+      throw new BadRequestException('File is empty');
+    }
+
+    const request = await this.ensureDocumentRequest(
+      organizationId,
+      documentRequestId,
+    );
+    const fileName = file.originalname || this.defaultFileName(request.title);
+    const mimeType = file.mimetype || 'application/octet-stream';
+    const checksum = createHash('sha256').update(file.buffer).digest('hex');
+    const storageKey = [
+      'documents',
+      organizationId,
+      documentRequestId,
+      `${Date.now()}-${randomUUID()}-${this.safeFileName(fileName)}`,
+    ].join('/');
+
+    let uploadedKey: string | null = null;
+
+    try {
+      const uploaded = await this.storage.upload({
+        key: storageKey,
+        buffer: file.buffer,
+        contentType: mimeType,
+      });
+      uploadedKey = uploaded.key;
+
+      return await this.prisma.$transaction(async (tx) => {
+        const fileAsset = await tx.fileAsset.create({
+          data: {
+            organizationId,
+            createdById: userId,
+            storageProvider: STORAGE_PROVIDER_SUPABASE,
+            storageKey: uploaded.key,
+            fileName,
+            mimeType,
+            sizeBytes: file.size,
+            checksum,
+          },
+        });
+
+        const document = await tx.document.create({
+          data: {
+            organizationId,
+            documentRequestId,
+            createdById: userId,
+            title: request.title,
+            versions: {
+              create: {
+                organizationId,
+                fileAssetId: fileAsset.id,
+                createdById: userId,
+                versionNumber: 1,
+                notes: this.optionalText(notes),
+              },
+            },
+          },
+          include: documentInclude,
+        });
+
+        if (
+          request.status === DocumentRequestStatus.PENDING ||
+          request.status === DocumentRequestStatus.OVERDUE
+        ) {
+          await tx.documentRequest.update({
+            where: { id: request.id },
+            data: { status: DocumentRequestStatus.SUBMITTED },
+          });
+        }
+
+        await this.activityLogs.create(
+          {
+            organizationId,
+            workspaceId: request.workspaceId,
+            actorId: userId,
+            action: 'DOCUMENT_UPLOADED',
+            entityType: 'Document',
+            entityId: document.id,
+            metadata: {
+              title: document.title,
+              fileName,
+              mimeType,
+              sizeBytes: file.size,
+              documentRequestId,
+            },
+          },
+          tx,
+        );
+
+        return document;
+      });
+    } catch (error) {
+      if (uploadedKey) {
+        await this.storage.remove(uploadedKey).catch(() => undefined);
+      }
+
+      throw error;
+    }
+  }
+
+  async createDownloadUrl(organizationId: string, id: string) {
+    const document = await this.get(organizationId, id);
+    const currentVersion = document.versions[0];
+
+    if (!currentVersion) {
+      throw new NotFoundException('Document version not found');
+    }
+
+    const { fileAsset } = currentVersion;
+
+    if (fileAsset.publicUrl) {
+      return {
+        url: fileAsset.publicUrl,
+        fileName: fileAsset.fileName,
+        mimeType: fileAsset.mimeType,
+        sizeBytes: fileAsset.sizeBytes,
+        expiresInSeconds: null,
+      };
+    }
+
+    if (fileAsset.storageProvider !== STORAGE_PROVIDER_SUPABASE) {
+      throw new BadRequestException('File is not available for download');
+    }
+
+    const expiresInSeconds = 3600;
+    const url = await this.storage.createSignedUrl(
+      fileAsset.storageKey,
+      expiresInSeconds,
+    );
+
+    return {
+      url,
+      fileName: fileAsset.fileName,
+      mimeType: fileAsset.mimeType,
+      sizeBytes: fileAsset.sizeBytes,
+      expiresInSeconds,
+    };
   }
 
   async updateStatus(
@@ -303,6 +459,11 @@ export class DocumentsService {
 
   private defaultFileName(title: string) {
     return `${this.safeFileName(title)}.pdf`;
+  }
+
+  private optionalText(value: string | undefined) {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : undefined;
   }
 
   private safeFileName(value: string) {

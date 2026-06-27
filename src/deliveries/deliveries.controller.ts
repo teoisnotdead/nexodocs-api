@@ -1,10 +1,29 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import type { AuthenticatedRequest } from '../common/types/authenticated-request';
 import { CreateApprovalDto } from './dto/create-approval.dto';
 import { CreateDeliveryItemDto } from './dto/create-delivery-item.dto';
 import { CreateDeliveryDto } from './dto/create-delivery.dto';
 import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
 import { DeliveriesService } from './deliveries.service';
+
+const fileUploadInterceptor = FileInterceptor('file', {
+  storage: memoryStorage(),
+  limits: {
+    fileSize: 25 * 1024 * 1024,
+  },
+});
 
 @Controller('workspaces/:workspaceId/deliveries')
 export class WorkspaceDeliveriesController {
@@ -65,6 +84,35 @@ export class DeliveriesController {
       request.user!.userId,
       id,
       dto,
+    );
+  }
+
+  @Post(':id/items/upload')
+  @UseInterceptors(fileUploadInterceptor)
+  uploadItem(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('title') title?: string,
+    @Body('description') description?: string,
+  ) {
+    return this.deliveriesService.uploadItem(
+      request.user!.organizationId,
+      request.user!.userId,
+      id,
+      file,
+      { title, description },
+    );
+  }
+
+  @Get('items/:itemId/download')
+  createItemDownloadUrl(
+    @Req() request: AuthenticatedRequest,
+    @Param('itemId') itemId: string,
+  ) {
+    return this.deliveriesService.createItemDownloadUrl(
+      request.user!.organizationId,
+      itemId,
     );
   }
 

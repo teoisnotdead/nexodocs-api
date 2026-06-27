@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { StorageModule } from '../storage/storage.module';
 import {
   DocumentRequestDocumentsController,
   DocumentsController,
@@ -8,7 +9,7 @@ import {
 import { DocumentsService } from './documents.service';
 
 @Module({
-  imports: [ActivityLogsModule, PrismaModule],
+  imports: [ActivityLogsModule, PrismaModule, StorageModule],
   controllers: [DocumentRequestDocumentsController, DocumentsController],
   providers: [DocumentsService],
 })

@@ -22,7 +22,7 @@ Este repositorio contiene solo la API. El frontend vive en el repositorio `nexod
 - Workspaces: procesos por cliente.
 - Checklist templates: plantillas documentales.
 - Document requests: solicitudes de documentos.
-- Documents: carga mock y estados documentales.
+- Documents: carga real en Supabase Storage, descargas firmadas y estados documentales.
 - Reviews: aprobaciones, rechazos y observaciones.
 - Deliveries: entregas y aprobaciones.
 - Activity logs: trazabilidad basica.
@@ -30,7 +30,7 @@ Este repositorio contiene solo la API. El frontend vive en el repositorio `nexod
 
 ## Requisitos
 
-- Node.js 22 o superior.
+- Node.js 22 LTS.
 - pnpm 11.
 - PostgreSQL.
 
@@ -53,6 +53,9 @@ JWT_REFRESH_SECRET=replace_with_strong_refresh_secret
 JWT_ACCESS_TTL_SECONDS=900
 JWT_REFRESH_DAYS=30
 COOKIE_SECURE=false
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=replace_with_supabase_service_role_key
+SUPABASE_STORAGE_BUCKET=nexodocs-documents
 ```
 
 Variables de produccion:
@@ -70,7 +73,7 @@ Notas:
 - `WEB_ORIGINS` acepta multiples URLs separadas por coma.
 - `COOKIE_SECURE=true` debe usarse en HTTPS.
 - Redis no se usa en el MVP actual.
-- Supabase Storage aun no esta conectado; las variables de storage quedan reservadas para una fase futura.
+- Supabase Storage debe estar configurado para subir y descargar archivos reales.
 
 ## Desarrollo local
 
@@ -135,7 +138,7 @@ pnpm test:e2e          # tests e2e
 Configuracion recomendada:
 
 - Runtime: Node
-- Node.js: 22 o superior
+- Node.js: 22 LTS
 - Build command:
 
 ```bash
@@ -160,6 +163,9 @@ JWT_ACCESS_TTL_SECONDS=900
 JWT_REFRESH_DAYS=30
 COOKIE_SECURE=true
 NODE_ENV=production
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=replace_with_supabase_service_role_key
+SUPABASE_STORAGE_BUCKET=nexodocs-documents
 ```
 
 Render define `PORT` automaticamente. La API escucha `PORT`, luego `API_PORT`, y finalmente `3001`.
@@ -175,6 +181,25 @@ DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public" pnpm p
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public" pnpm prisma:seed
 ```
 
+## Supabase Storage
+
+Crear un bucket privado antes de probar cargas reales:
+
+```text
+nexodocs-documents
+```
+
+La API sube archivos con la service role key y guarda metadata en `FileAsset`. Los usuarios no reciben URLs publicas permanentes; la API genera URLs firmadas de corta duracion para descarga.
+
+Rutas principales:
+
+```text
+POST /document-requests/:id/upload
+GET /documents/:id/download
+POST /deliveries/:id/items/upload
+GET /deliveries/items/:itemId/download
+```
+
 ## Estado del MVP
 
-El flujo documental usa carga mock: se guarda metadata de archivos y versiones en PostgreSQL, pero no se guardan binarios en disco ni en storage cloud. La integracion futura recomendada es Supabase Storage o S3 compatible.
+El flujo documental ya puede guardar binarios reales en Supabase Storage. Los endpoints `mock-upload` y `items` siguen existiendo para compatibilidad/demo, pero la web usa los endpoints reales de upload.
