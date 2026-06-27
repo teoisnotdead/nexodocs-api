@@ -1,0 +1,640 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+  REVIEWER
+  VIEWER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum ClientStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum WorkspaceStatus {
+  DRAFT
+  ACTIVE
+  WAITING_CLIENT
+  IN_REVIEW
+  WAITING_APPROVAL
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+enum WorkspaceType {
+  GENERIC_PROCESS
+  MONTHLY_CLOSURE
+  LEGAL_CASE
+  ONBOARDING
+  DOCUMENT_REVIEW
+}
+
+enum DocumentRequestStatus {
+  DRAFT
+  PENDING
+  SUBMITTED
+  IN_REVIEW
+  OBSERVED
+  RESUBMITTED
+  APPROVED
+  REJECTED
+  OVERDUE
+  CANCELLED
+}
+
+enum DocumentStatus {
+  UPLOADED
+  UNDER_REVIEW
+  APPROVED
+  OBSERVED
+  REJECTED
+  REPLACED
+  ARCHIVED
+}
+
+enum DocumentOrigin {
+  CLIENT_UPLOAD
+  ORGANIZATION_UPLOAD
+  SYSTEM_GENERATED
+}
+
+enum ReviewDecision {
+  APPROVED
+  REJECTED
+}
+
+enum DeliveryStatus {
+  DRAFT
+  SENT
+  VIEWED
+  APPROVED
+  OBSERVED
+  COMPLETED
+  CANCELLED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  OBSERVED
+  REJECTED
+}
+
+enum ActivityActorType {
+  USER
+  SYSTEM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+}
+
+model Organization {
+  id                  String                    @id @default(cuid())
+  name                String
+  legalName           String?
+  taxId               String?
+  industry            String?
+  logoUrl             String?
+  primaryColor        String?
+  onboardingCompleted Boolean                   @default(false)
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  activityLogs        ActivityLog[]
+  checklistTemplates  ChecklistTemplate[]
+  checklists          Checklist[]
+  deliveries          Delivery[]
+  deliveryItems       DeliveryItem[]
+  approvals           Approval[]
+  clients             Client[]
+  documents           Document[]
+  documentVersions    DocumentVersion[]
+  documentRequests    DocumentRequest[]
+  fileAssets          FileAsset[]
+  memberships         Membership[]
+  observations        Observation[]
+  subscription        OrganizationSubscription?
+  usageMetrics        UsageMetric[]
+  reviews             Review[]
+  workspaces          Workspace[]
+
+  @@index([taxId])
+  @@index([createdAt])
+}
+
+model User {
+  id                        String              @id @default(cuid())
+  name                      String
+  email                     String              @unique
+  passwordHash              String?
+  avatarUrl                 String?
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+  authSessions              AuthSession[]
+  createdChecklistTemplates ChecklistTemplate[]
+  createdChecklists         Checklist[]
+  createdDeliveries         Delivery[]
+  createdDeliveryItems      DeliveryItem[]
+  createdApprovals          Approval[]
+  createdDocuments          Document[]
+  createdDocumentVersions   DocumentVersion[]
+  createdDocumentRequests   DocumentRequest[]
+  createdFileAssets         FileAsset[]
+  createdObservations       Observation[]       @relation("ObservationCreatedBy")
+  createdReviews            Review[]
+  createdWorkspaces         Workspace[]
+  memberships               Membership[]
+  resolvedObservations      Observation[]       @relation("ObservationResolvedBy")
+
+  @@index([email])
+  @@index([createdAt])
+}
+
+model Membership {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  role           MembershipRole
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AuthSession {
+  id               String    @id @default(cuid())
+  userId           String
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("auth_sessions")
+}
+
+model Client {
+  id             String          @id @default(cuid())
+  organizationId String
+  name           String
+  legalName      String?
+  taxId          String?
+  industry       String?
+  email          String?
+  phone          String?
+  website        String?
+  notes          String?
+  status         ClientStatus    @default(ACTIVE)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contacts       ClientContact[]
+  workspaces     Workspace[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([name])
+  @@index([taxId])
+  @@index([createdAt])
+}
+
+model Plan {
+  id                  String                     @id @default(cuid())
+  code                String                     @unique
+  name                String
+  description         String?
+  maxClients          Int
+  maxActiveWorkspaces Int
+  maxStorageGb        Int
+  maxInternalUsers    Int
+  maxTemplates        Int
+  maxReminders        Int
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  subscriptions       OrganizationSubscription[]
+
+  @@index([code])
+  @@index([name])
+}
+
+model OrganizationSubscription {
+  id             String             @id @default(cuid())
+  organizationId String             @unique
+  planId         String
+  status         SubscriptionStatus @default(ACTIVE)
+  startedAt      DateTime           @default(now())
+  endsAt         DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan           Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([planId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model UsageMetric {
+  id             String       @id @default(cuid())
+  organizationId String
+  metric         String
+  value          Int          @default(0)
+  measuredAt     DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, metric])
+  @@index([organizationId])
+  @@index([metric])
+  @@index([measuredAt])
+}
+
+model ClientContact {
+  id                       String            @id @default(cuid())
+  clientId                 String
+  name                     String
+  email                    String?
+  phone                    String?
+  role                     String?
+  isPrimary                Boolean           @default(false)
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  assignedDocumentRequests DocumentRequest[]
+  client                   Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([email])
+  @@index([isPrimary])
+}
+
+model Workspace {
+  id               String            @id @default(cuid())
+  organizationId   String
+  clientId         String
+  name             String
+  description      String?
+  workspaceType    WorkspaceType     @default(GENERIC_PROCESS)
+  periodYear       Int?
+  periodMonth      Int?
+  dueDate          DateTime?
+  status           WorkspaceStatus   @default(DRAFT)
+  createdById      String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  closedAt         DateTime?
+  deletedAt        DateTime?
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client           Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy        User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  activityLogs     ActivityLog[]
+  checklists       Checklist[]
+  deliveries       Delivery[]
+  documentRequests DocumentRequest[]
+
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([createdById])
+  @@index([status])
+  @@index([workspaceType])
+  @@index([dueDate])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model DocumentRequest {
+  id                      String                @id @default(cuid())
+  organizationId          String
+  workspaceId             String
+  checklistId             String?
+  title                   String
+  description             String?
+  required                Boolean               @default(true)
+  dueDate                 DateTime?
+  status                  DocumentRequestStatus @default(PENDING)
+  assignedClientContactId String?
+  createdById             String
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+  organization            Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  checklist               Checklist?            @relation(fields: [checklistId], references: [id], onDelete: SetNull)
+  assignedClientContact   ClientContact?        @relation(fields: [assignedClientContactId], references: [id], onDelete: SetNull)
+  createdBy               User                  @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  documents               Document[]
+  observations            Observation[]
+
+  @@index([organizationId])
+  @@index([workspaceId])
+  @@index([checklistId])
+  @@index([assignedClientContactId])
+  @@index([createdById])
+  @@index([status])
+  @@index([dueDate])
+  @@index([createdAt])
+}
+
+model ChecklistTemplate {
+  id             String                  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  createdById    String
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  deletedAt      DateTime?
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User                    @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  items          ChecklistTemplateItem[]
+  checklists     Checklist[]
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([name])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model ChecklistTemplateItem {
+  id          String            @id @default(cuid())
+  templateId  String
+  title       String
+  description String?
+  required    Boolean           @default(true)
+  position    Int
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  template    ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@index([position])
+}
+
+model Checklist {
+  id               String             @id @default(cuid())
+  organizationId   String
+  workspaceId      String
+  templateId       String?
+  name             String
+  description      String?
+  createdById      String
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace        Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  template         ChecklistTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  createdBy        User               @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  documentRequests DocumentRequest[]
+
+  @@index([organizationId])
+  @@index([workspaceId])
+  @@index([templateId])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model Document {
+  id                String            @id @default(cuid())
+  organizationId    String
+  documentRequestId String
+  title             String
+  status            DocumentStatus    @default(UPLOADED)
+  origin            DocumentOrigin    @default(CLIENT_UPLOAD)
+  createdById       String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  reviewedAt        DateTime?
+  archivedAt        DateTime?
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  documentRequest   DocumentRequest   @relation(fields: [documentRequestId], references: [id], onDelete: Cascade)
+  createdBy         User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  observations      Observation[]
+  reviews           Review[]
+  versions          DocumentVersion[]
+
+  @@index([organizationId])
+  @@index([documentRequestId])
+  @@index([createdById])
+  @@index([status])
+  @@index([origin])
+  @@index([createdAt])
+}
+
+model Review {
+  id             String         @id @default(cuid())
+  organizationId String
+  documentId     String
+  decision       ReviewDecision
+  comment        String?
+  createdById    String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document       Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy      User           @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([documentId])
+  @@index([decision])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model Observation {
+  id                String          @id @default(cuid())
+  organizationId    String
+  documentId        String
+  documentRequestId String
+  comment           String
+  resolutionNote    String?
+  createdById       String
+  resolvedById      String?
+  resolvedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document          Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentRequest   DocumentRequest @relation(fields: [documentRequestId], references: [id], onDelete: Cascade)
+  createdBy         User            @relation("ObservationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  resolvedBy        User?           @relation("ObservationResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([documentId])
+  @@index([documentRequestId])
+  @@index([createdById])
+  @@index([resolvedById])
+  @@index([resolvedAt])
+  @@index([createdAt])
+}
+
+model Delivery {
+  id             String         @id @default(cuid())
+  organizationId String
+  workspaceId    String
+  title          String
+  description    String?
+  status         DeliveryStatus @default(DRAFT)
+  sentAt         DateTime?
+  viewedAt       DateTime?
+  completedAt    DateTime?
+  cancelledAt    DateTime?
+  createdById    String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy      User           @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  items          DeliveryItem[]
+  approvals      Approval[]
+
+  @@index([organizationId])
+  @@index([workspaceId])
+  @@index([createdById])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DeliveryItem {
+  id             String       @id @default(cuid())
+  organizationId String
+  deliveryId     String
+  fileAssetId    String
+  title          String
+  description    String?
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  delivery       Delivery     @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  fileAsset      FileAsset    @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
+  createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([deliveryId])
+  @@index([fileAssetId])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model Approval {
+  id             String         @id @default(cuid())
+  organizationId String
+  deliveryId     String
+  status         ApprovalStatus @default(PENDING)
+  comment        String?
+  createdById    String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  delivery       Delivery       @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  createdBy      User           @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([deliveryId])
+  @@index([status])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model ActivityLog {
+  id             String            @id @default(cuid())
+  organizationId String
+  workspaceId    String?
+  actorType      ActivityActorType @default(USER)
+  actorId        String
+  action         String
+  entityType     String
+  entityId       String?
+  metadata       Json?
+  createdAt      DateTime          @default(now())
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace      Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([workspaceId])
+  @@index([actorType])
+  @@index([actorId])
+  @@index([action])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([createdAt])
+}
+
+model DocumentVersion {
+  id             String       @id @default(cuid())
+  organizationId String
+  documentId     String
+  fileAssetId    String
+  versionNumber  Int
+  notes          String?
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document       Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  fileAsset      FileAsset    @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
+  createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, versionNumber])
+  @@index([organizationId])
+  @@index([documentId])
+  @@index([fileAssetId])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model FileAsset {
+  id              String            @id @default(cuid())
+  organizationId  String
+  storageProvider String            @default("mock")
+  storageKey      String
+  fileName        String
+  mimeType        String
+  sizeBytes       Int
+  checksum        String?
+  publicUrl       String?
+  createdById     String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  deliveryItems   DeliveryItem[]
+  versions        DocumentVersion[]
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([storageProvider])
+  @@index([storageKey])
+  @@index([createdAt])
+}
