@@ -169,6 +169,7 @@ export class DocumentsService {
           documentRequestId,
           createdById: userId,
           title: request.title,
+          origin: DocumentOrigin.ORGANIZATION_UPLOAD,
           versions: {
             create: {
               organizationId,
@@ -272,6 +273,7 @@ export class DocumentsService {
             documentRequestId,
             createdById: userId,
             title: request.title,
+            origin: DocumentOrigin.ORGANIZATION_UPLOAD,
             versions: {
               create: {
                 organizationId,
