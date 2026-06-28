@@ -142,7 +142,7 @@ Configuracion recomendada:
 - Build command:
 
 ```bash
-pnpm install && pnpm build
+pnpm install --frozen-lockfile && pnpm deploy:build
 ```
 
 - Start command:
@@ -170,6 +170,8 @@ SUPABASE_STORAGE_BUCKET=nexodocs-documents
 
 Render define `PORT` automaticamente. La API escucha `PORT`, luego `API_PORT`, y finalmente `3001`.
 
+`pnpm deploy:build` ejecuta `prisma migrate deploy` antes del build. Asi Render aplica las migraciones pendientes en Supabase antes de arrancar la nueva API.
+
 ## Base de datos
 
 La base recomendada para el MVP desplegado es Supabase Postgres.
@@ -177,7 +179,7 @@ La base recomendada para el MVP desplegado es Supabase Postgres.
 Despues de crear la base, ejecuta migraciones y seed apuntando a la URL real:
 
 ```bash
-DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public" pnpm prisma:migrate
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public" pnpm prisma:deploy
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public" pnpm prisma:seed
 ```
 

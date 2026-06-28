@@ -12,6 +12,7 @@
   "scripts": {
     "prebuild": "prisma generate",
     "build": "nest build",
+    "deploy:build": "prisma migrate deploy && pnpm build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -19,6 +20,7 @@
     "start:prod": "node dist/src/main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "prisma:generate": "prisma generate",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",
     "test": "jest",
