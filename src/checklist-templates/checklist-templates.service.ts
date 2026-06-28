@@ -111,7 +111,7 @@ export class ChecklistTemplatesService {
     const [workspace, template] = await Promise.all([
       this.prisma.workspace.findFirst({
         where: { id: workspaceId, organizationId, deletedAt: null },
-        select: { id: true, dueDate: true },
+        select: { id: true, clientId: true, dueDate: true },
       }),
       this.prisma.checklistTemplate.findFirst({
         where: { id: dto.templateId, organizationId, deletedAt: null },
@@ -133,6 +133,22 @@ export class ChecklistTemplatesService {
 
     if (template.items.length === 0) {
       throw new BadRequestException('Checklist template has no items');
+    }
+
+    if (dto.assignedClientContactId) {
+      const contact = await this.prisma.clientContact.findFirst({
+        where: {
+          id: dto.assignedClientContactId,
+          clientId: workspace.clientId,
+        },
+        select: { id: true },
+      });
+
+      if (!contact) {
+        throw new BadRequestException(
+          'Assigned contact does not belong to workspace client',
+        );
+      }
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -159,6 +175,7 @@ export class ChecklistTemplatesService {
             required: item.required,
             dueDate: workspace.dueDate,
             status: DocumentRequestStatus.PENDING,
+            assignedClientContactId: dto.assignedClientContactId,
           },
         });
 

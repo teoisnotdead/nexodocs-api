@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, MinLength } from 'class-validator';
 
 const optionalText = ({ value }: { value: unknown }) => {
   if (typeof value !== 'string') {
@@ -15,4 +15,10 @@ export class ApplyChecklistTemplateDto {
   @IsString()
   @MinLength(2)
   templateId!: string;
+
+  @Transform(optionalText)
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  assignedClientContactId?: string;
 }
