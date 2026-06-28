@@ -12,5 +12,6 @@ import { DocumentsService } from './documents.service';
   imports: [ActivityLogsModule, PrismaModule, StorageModule],
   controllers: [DocumentRequestDocumentsController, DocumentsController],
   providers: [DocumentsService],
+  exports: [DocumentsService],
 })
 export class DocumentsModule {}

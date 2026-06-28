@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  ActivityActorType,
+  DocumentOrigin,
   DocumentRequestStatus,
   DocumentStatus,
   Prisma,
@@ -29,6 +31,14 @@ const documentInclude = {
           email: true,
         },
       },
+      uploadedByClientContact: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+        },
+      },
     },
   },
   createdBy: {
@@ -36,6 +46,14 @@ const documentInclude = {
       id: true,
       name: true,
       email: true,
+    },
+  },
+  uploadedByClientContact: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
     },
   },
   reviews: {
@@ -84,6 +102,12 @@ const reviewStatuses: DocumentStatus[] = [
   DocumentStatus.OBSERVED,
   DocumentStatus.REJECTED,
 ];
+
+type ClientPortalUploadAccess = {
+  organizationId: string;
+  workspaceId: string;
+  clientContactId: string;
+};
 
 @Injectable()
 export class DocumentsService {
@@ -301,6 +325,118 @@ export class DocumentsService {
     }
   }
 
+  async uploadFromClientPortal(
+    access: ClientPortalUploadAccess,
+    documentRequestId: string,
+    file: Express.Multer.File | undefined,
+    notes?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    if (!file.buffer?.length) {
+      throw new BadRequestException('File is empty');
+    }
+
+    const request = await this.ensureClientPortalDocumentRequest(
+      access,
+      documentRequestId,
+    );
+    const fileName = file.originalname || this.defaultFileName(request.title);
+    const mimeType = file.mimetype || 'application/octet-stream';
+    const checksum = createHash('sha256').update(file.buffer).digest('hex');
+    const storageKey = [
+      'documents',
+      access.organizationId,
+      documentRequestId,
+      `${Date.now()}-${randomUUID()}-${this.safeFileName(fileName)}`,
+    ].join('/');
+
+    let uploadedKey: string | null = null;
+
+    try {
+      const uploaded = await this.storage.upload({
+        key: storageKey,
+        buffer: file.buffer,
+        contentType: mimeType,
+      });
+      uploadedKey = uploaded.key;
+
+      return await this.prisma.$transaction(async (tx) => {
+        const fileAsset = await tx.fileAsset.create({
+          data: {
+            organizationId: access.organizationId,
+            uploadedByClientContactId: access.clientContactId,
+            storageProvider: STORAGE_PROVIDER_SUPABASE,
+            storageKey: uploaded.key,
+            fileName,
+            mimeType,
+            sizeBytes: file.size,
+            checksum,
+          },
+        });
+
+        const document = await tx.document.create({
+          data: {
+            organizationId: access.organizationId,
+            documentRequestId,
+            uploadedByClientContactId: access.clientContactId,
+            title: request.title,
+            origin: DocumentOrigin.CLIENT_UPLOAD,
+            versions: {
+              create: {
+                organizationId: access.organizationId,
+                fileAssetId: fileAsset.id,
+                uploadedByClientContactId: access.clientContactId,
+                versionNumber: 1,
+                notes: this.optionalText(notes),
+              },
+            },
+          },
+          include: documentInclude,
+        });
+
+        const nextStatus = this.statusAfterClientUpload(request.status);
+
+        if (nextStatus) {
+          await tx.documentRequest.update({
+            where: { id: request.id },
+            data: { status: nextStatus },
+          });
+        }
+
+        await this.activityLogs.create(
+          {
+            organizationId: access.organizationId,
+            workspaceId: request.workspaceId,
+            actorType: ActivityActorType.CLIENT_CONTACT,
+            actorId: access.clientContactId,
+            action: 'CLIENT_DOCUMENT_UPLOADED',
+            entityType: 'Document',
+            entityId: document.id,
+            metadata: {
+              title: document.title,
+              fileName,
+              mimeType,
+              sizeBytes: file.size,
+              documentRequestId,
+            },
+          },
+          tx,
+        );
+
+        return document;
+      });
+    } catch (error) {
+      if (uploadedKey) {
+        await this.storage.remove(uploadedKey).catch(() => undefined);
+      }
+
+      throw error;
+    }
+  }
+
   async createDownloadUrl(organizationId: string, id: string) {
     const document = await this.get(organizationId, id);
     const currentVersion = document.versions[0];
@@ -427,6 +563,60 @@ export class DocumentsService {
     }
 
     return request;
+  }
+
+  private async ensureClientPortalDocumentRequest(
+    access: ClientPortalUploadAccess,
+    documentRequestId: string,
+  ) {
+    const request = await this.prisma.documentRequest.findFirst({
+      where: {
+        id: documentRequestId,
+        organizationId: access.organizationId,
+        workspaceId: access.workspaceId,
+        OR: [
+          { assignedClientContactId: access.clientContactId },
+          { assignedClientContactId: null },
+        ],
+      },
+      select: {
+        id: true,
+        title: true,
+        workspaceId: true,
+        status: true,
+      },
+    });
+
+    if (!request) {
+      throw new NotFoundException('Document request not found');
+    }
+
+    if (
+      request.status === DocumentRequestStatus.APPROVED ||
+      request.status === DocumentRequestStatus.CANCELLED
+    ) {
+      throw new BadRequestException('Document request is closed');
+    }
+
+    return request;
+  }
+
+  private statusAfterClientUpload(status: DocumentRequestStatus) {
+    if (
+      status === DocumentRequestStatus.OBSERVED ||
+      status === DocumentRequestStatus.REJECTED
+    ) {
+      return DocumentRequestStatus.RESUBMITTED;
+    }
+
+    if (
+      status === DocumentRequestStatus.PENDING ||
+      status === DocumentRequestStatus.OVERDUE
+    ) {
+      return DocumentRequestStatus.SUBMITTED;
+    }
+
+    return null;
   }
 
   private toDocumentRequestStatus(status: DocumentStatus) {

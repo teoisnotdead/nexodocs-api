@@ -99,6 +99,7 @@ enum ApprovalStatus {
 enum ActivityActorType {
   USER
   SYSTEM
+  CLIENT_CONTACT
 }
 
 enum SubscriptionStatus {
@@ -108,61 +109,63 @@ enum SubscriptionStatus {
 }
 
 model Organization {
-  id                  String                    @id @default(cuid())
-  name                String
-  legalName           String?
-  taxId               String?
-  industry            String?
-  logoUrl             String?
-  primaryColor        String?
-  onboardingCompleted Boolean                   @default(false)
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
-  activityLogs        ActivityLog[]
-  checklistTemplates  ChecklistTemplate[]
-  checklists          Checklist[]
-  deliveries          Delivery[]
-  deliveryItems       DeliveryItem[]
-  approvals           Approval[]
-  clients             Client[]
-  documents           Document[]
-  documentVersions    DocumentVersion[]
-  documentRequests    DocumentRequest[]
-  fileAssets          FileAsset[]
-  memberships         Membership[]
-  observations        Observation[]
-  subscription        OrganizationSubscription?
-  usageMetrics        UsageMetric[]
-  reviews             Review[]
-  workspaces          Workspace[]
+  id                   String                    @id @default(cuid())
+  name                 String
+  legalName            String?
+  taxId                String?
+  industry             String?
+  logoUrl              String?
+  primaryColor         String?
+  onboardingCompleted  Boolean                   @default(false)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  activityLogs         ActivityLog[]
+  checklistTemplates   ChecklistTemplate[]
+  checklists           Checklist[]
+  clientPortalAccesses ClientPortalAccess[]
+  deliveries           Delivery[]
+  deliveryItems        DeliveryItem[]
+  approvals            Approval[]
+  clients              Client[]
+  documents            Document[]
+  documentVersions     DocumentVersion[]
+  documentRequests     DocumentRequest[]
+  fileAssets           FileAsset[]
+  memberships          Membership[]
+  observations         Observation[]
+  subscription         OrganizationSubscription?
+  usageMetrics         UsageMetric[]
+  reviews              Review[]
+  workspaces           Workspace[]
 
   @@index([taxId])
   @@index([createdAt])
 }
 
 model User {
-  id                        String              @id @default(cuid())
-  name                      String
-  email                     String              @unique
-  passwordHash              String?
-  avatarUrl                 String?
-  createdAt                 DateTime            @default(now())
-  updatedAt                 DateTime            @updatedAt
-  authSessions              AuthSession[]
-  createdChecklistTemplates ChecklistTemplate[]
-  createdChecklists         Checklist[]
-  createdDeliveries         Delivery[]
-  createdDeliveryItems      DeliveryItem[]
-  createdApprovals          Approval[]
-  createdDocuments          Document[]
-  createdDocumentVersions   DocumentVersion[]
-  createdDocumentRequests   DocumentRequest[]
-  createdFileAssets         FileAsset[]
-  createdObservations       Observation[]       @relation("ObservationCreatedBy")
-  createdReviews            Review[]
-  createdWorkspaces         Workspace[]
-  memberships               Membership[]
-  resolvedObservations      Observation[]       @relation("ObservationResolvedBy")
+  id                          String               @id @default(cuid())
+  name                        String
+  email                       String               @unique
+  passwordHash                String?
+  avatarUrl                   String?
+  createdAt                   DateTime             @default(now())
+  updatedAt                   DateTime             @updatedAt
+  authSessions                AuthSession[]
+  createdChecklistTemplates   ChecklistTemplate[]
+  createdChecklists           Checklist[]
+  createdClientPortalAccesses ClientPortalAccess[]
+  createdDeliveries           Delivery[]
+  createdDeliveryItems        DeliveryItem[]
+  createdApprovals            Approval[]
+  createdDocuments            Document[]
+  createdDocumentVersions     DocumentVersion[]
+  createdDocumentRequests     DocumentRequest[]
+  createdFileAssets           FileAsset[]
+  createdObservations         Observation[]        @relation("ObservationCreatedBy")
+  createdReviews              Review[]
+  createdWorkspaces           Workspace[]
+  memberships                 Membership[]
+  resolvedObservations        Observation[]        @relation("ObservationResolvedBy")
 
   @@index([email])
   @@index([createdAt])
@@ -205,22 +208,23 @@ model AuthSession {
 }
 
 model Client {
-  id             String          @id @default(cuid())
-  organizationId String
-  name           String
-  legalName      String?
-  taxId          String?
-  industry       String?
-  email          String?
-  phone          String?
-  website        String?
-  notes          String?
-  status         ClientStatus    @default(ACTIVE)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contacts       ClientContact[]
-  workspaces     Workspace[]
+  id                   String               @id @default(cuid())
+  organizationId       String
+  name                 String
+  legalName            String?
+  taxId                String?
+  industry             String?
+  email                String?
+  phone                String?
+  website              String?
+  notes                String?
+  status               ClientStatus         @default(ACTIVE)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  organization         Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contacts             ClientContact[]
+  clientPortalAccesses ClientPortalAccess[]
+  workspaces           Workspace[]
 
   @@index([organizationId])
   @@index([status])
@@ -282,17 +286,21 @@ model UsageMetric {
 }
 
 model ClientContact {
-  id                       String            @id @default(cuid())
+  id                       String               @id @default(cuid())
   clientId                 String
   name                     String
   email                    String?
   phone                    String?
   role                     String?
-  isPrimary                Boolean           @default(false)
-  createdAt                DateTime          @default(now())
-  updatedAt                DateTime          @updatedAt
+  isPrimary                Boolean              @default(false)
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
   assignedDocumentRequests DocumentRequest[]
-  client                   Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientPortalAccesses     ClientPortalAccess[]
+  uploadedDocuments        Document[]           @relation("DocumentUploadedByClientContact")
+  uploadedDocumentVersions DocumentVersion[]    @relation("DocumentVersionUploadedByClientContact")
+  uploadedFileAssets       FileAsset[]          @relation("FileAssetUploadedByClientContact")
+  client                   Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId])
   @@index([email])
@@ -300,28 +308,29 @@ model ClientContact {
 }
 
 model Workspace {
-  id               String            @id @default(cuid())
-  organizationId   String
-  clientId         String
-  name             String
-  description      String?
-  workspaceType    WorkspaceType     @default(GENERIC_PROCESS)
-  periodYear       Int?
-  periodMonth      Int?
-  dueDate          DateTime?
-  status           WorkspaceStatus   @default(DRAFT)
-  createdById      String
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  closedAt         DateTime?
-  deletedAt        DateTime?
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client           Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  createdBy        User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  activityLogs     ActivityLog[]
-  checklists       Checklist[]
-  deliveries       Delivery[]
-  documentRequests DocumentRequest[]
+  id                   String               @id @default(cuid())
+  organizationId       String
+  clientId             String
+  name                 String
+  description          String?
+  workspaceType        WorkspaceType        @default(GENERIC_PROCESS)
+  periodYear           Int?
+  periodMonth          Int?
+  dueDate              DateTime?
+  status               WorkspaceStatus      @default(DRAFT)
+  createdById          String
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  closedAt             DateTime?
+  deletedAt            DateTime?
+  organization         Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client               Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy            User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  activityLogs         ActivityLog[]
+  checklists           Checklist[]
+  clientPortalAccesses ClientPortalAccess[]
+  deliveries           Delivery[]
+  documentRequests     DocumentRequest[]
 
   @@index([organizationId])
   @@index([clientId])
@@ -425,27 +434,30 @@ model Checklist {
 }
 
 model Document {
-  id                String            @id @default(cuid())
-  organizationId    String
-  documentRequestId String
-  title             String
-  status            DocumentStatus    @default(UPLOADED)
-  origin            DocumentOrigin    @default(CLIENT_UPLOAD)
-  createdById       String
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  reviewedAt        DateTime?
-  archivedAt        DateTime?
-  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  documentRequest   DocumentRequest   @relation(fields: [documentRequestId], references: [id], onDelete: Cascade)
-  createdBy         User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  observations      Observation[]
-  reviews           Review[]
-  versions          DocumentVersion[]
+  id                        String            @id @default(cuid())
+  organizationId            String
+  documentRequestId         String
+  title                     String
+  status                    DocumentStatus    @default(UPLOADED)
+  origin                    DocumentOrigin    @default(CLIENT_UPLOAD)
+  createdById               String?
+  uploadedByClientContactId String?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  reviewedAt                DateTime?
+  archivedAt                DateTime?
+  organization              Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  documentRequest           DocumentRequest   @relation(fields: [documentRequestId], references: [id], onDelete: Cascade)
+  createdBy                 User?             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  uploadedByClientContact   ClientContact?    @relation("DocumentUploadedByClientContact", fields: [uploadedByClientContactId], references: [id], onDelete: SetNull)
+  observations              Observation[]
+  reviews                   Review[]
+  versions                  DocumentVersion[]
 
   @@index([organizationId])
   @@index([documentRequestId])
   @@index([createdById])
+  @@index([uploadedByClientContactId])
   @@index([status])
   @@index([origin])
   @@index([createdAt])
@@ -592,49 +604,88 @@ model ActivityLog {
 }
 
 model DocumentVersion {
-  id             String       @id @default(cuid())
-  organizationId String
-  documentId     String
-  fileAssetId    String
-  versionNumber  Int
-  notes          String?
-  createdById    String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  document       Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  fileAsset      FileAsset    @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
-  createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  id                        String         @id @default(cuid())
+  organizationId            String
+  documentId                String
+  fileAssetId               String
+  versionNumber             Int
+  notes                     String?
+  createdById               String?
+  uploadedByClientContactId String?
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+  organization              Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document                  Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  fileAsset                 FileAsset      @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
+  createdBy                 User?          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  uploadedByClientContact   ClientContact? @relation("DocumentVersionUploadedByClientContact", fields: [uploadedByClientContactId], references: [id], onDelete: SetNull)
 
   @@unique([documentId, versionNumber])
   @@index([organizationId])
   @@index([documentId])
   @@index([fileAssetId])
   @@index([createdById])
+  @@index([uploadedByClientContactId])
   @@index([createdAt])
 }
 
 model FileAsset {
-  id              String            @id @default(cuid())
-  organizationId  String
-  storageProvider String            @default("mock")
-  storageKey      String
-  fileName        String
-  mimeType        String
-  sizeBytes       Int
-  checksum        String?
-  publicUrl       String?
-  createdById     String
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy       User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  deliveryItems   DeliveryItem[]
-  versions        DocumentVersion[]
+  id                        String            @id @default(cuid())
+  organizationId            String
+  storageProvider           String            @default("mock")
+  storageKey                String
+  fileName                  String
+  mimeType                  String
+  sizeBytes                 Int
+  checksum                  String?
+  publicUrl                 String?
+  createdById               String?
+  uploadedByClientContactId String?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  organization              Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy                 User?             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  uploadedByClientContact   ClientContact?    @relation("FileAssetUploadedByClientContact", fields: [uploadedByClientContactId], references: [id], onDelete: SetNull)
+  deliveryItems             DeliveryItem[]
+  versions                  DocumentVersion[]
 
   @@index([organizationId])
   @@index([createdById])
+  @@index([uploadedByClientContactId])
   @@index([storageProvider])
   @@index([storageKey])
+  @@index([createdAt])
+}
+
+model ClientPortalAccess {
+  id              String        @id @default(cuid())
+  organizationId  String
+  workspaceId     String
+  clientId        String
+  clientContactId String
+  tokenHash       String        @unique
+  codeHash        String
+  expiresAt       DateTime
+  codeExpiresAt   DateTime
+  revokedAt       DateTime?
+  failedAttempts  Int           @default(0)
+  lockedUntil     DateTime?
+  lastUsedAt      DateTime?
+  createdById     String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientContact   ClientContact @relation(fields: [clientContactId], references: [id], onDelete: Cascade)
+  createdBy       User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([workspaceId])
+  @@index([clientId])
+  @@index([clientContactId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@index([createdById])
   @@index([createdAt])
 }

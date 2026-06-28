@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ActivityLogsModule } from './activity-logs/activity-logs.module';
 import { AuthModule } from './auth/auth.module';
 import { ChecklistTemplatesModule } from './checklist-templates/checklist-templates.module';
+import { ClientPortalModule } from './client-portal/client-portal.module';
 import { ClientsModule } from './clients/clients.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { DeliveriesModule } from './deliveries/deliveries.module';
@@ -24,6 +25,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module';
     ActivityLogsModule,
     AuthModule,
     ChecklistTemplatesModule,
+    ClientPortalModule,
     ClientsModule,
     DashboardModule,
     DeliveriesModule,
