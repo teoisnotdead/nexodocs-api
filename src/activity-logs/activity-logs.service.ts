@@ -30,6 +30,14 @@ type CreateActivityInput = {
   metadata?: Record<string, unknown>;
 };
 
+type ListActivityInput = {
+  limit?: string | number;
+  offset?: string | number;
+};
+
+const DEFAULT_WORKSPACE_ACTIVITY_LIMIT = 10;
+const MAX_WORKSPACE_ACTIVITY_LIMIT = 50;
+
 @Injectable()
 export class ActivityLogsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -63,17 +71,38 @@ export class ActivityLogsService {
     return { items };
   }
 
-  async listByWorkspace(organizationId: string, workspaceId: string, take = 20) {
+  async listByWorkspace(
+    organizationId: string,
+    workspaceId: string,
+    input: ListActivityInput = {},
+  ) {
     await this.ensureWorkspace(organizationId, workspaceId);
+    const limit = this.clampPositiveInteger(
+      input.limit,
+      DEFAULT_WORKSPACE_ACTIVITY_LIMIT,
+      MAX_WORKSPACE_ACTIVITY_LIMIT,
+    );
+    const offset = this.parseNonNegativeInteger(input.offset, 0);
 
-    const items = await this.prisma.activityLog.findMany({
-      where: { organizationId, workspaceId },
-      include: activityInclude,
-      orderBy: { createdAt: 'desc' },
-      take,
-    });
+    const where = { organizationId, workspaceId };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.activityLog.findMany({
+        where,
+        include: activityInclude,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.activityLog.count({ where }),
+    ]);
 
-    return { items };
+    return {
+      items,
+      total,
+      limit,
+      offset,
+      hasMore: offset + items.length < total,
+    };
   }
 
   private async ensureWorkspace(organizationId: string, workspaceId: string) {
@@ -91,5 +120,38 @@ export class ActivityLogsService {
     return Object.fromEntries(
       Object.entries(metadata).filter(([, value]) => value !== undefined),
     ) as Prisma.InputJsonObject;
+  }
+
+  private clampPositiveInteger(
+    value: string | number | undefined,
+    fallback: number,
+    max: number,
+  ) {
+    const parsed = this.parseInteger(value);
+
+    if (parsed === null || parsed < 1) {
+      return fallback;
+    }
+
+    return Math.min(parsed, max);
+  }
+
+  private parseNonNegativeInteger(
+    value: string | number | undefined,
+    fallback: number,
+  ) {
+    const parsed = this.parseInteger(value);
+
+    return parsed === null || parsed < 0 ? fallback : parsed;
+  }
+
+  private parseInteger(value: string | number | undefined) {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+
+    const parsed = Number(value);
+
+    return Number.isInteger(parsed) ? parsed : null;
   }
 }
