@@ -209,6 +209,8 @@ export class DashboardService {
       DOCUMENT_REQUEST_CREATED: `Solicitud creada${named ? `: ${named}` : ''}`,
       DOCUMENT_REQUEST_STATUS_CHANGED: `Solicitud actualizada${named ? `: ${named}` : ''}`,
       DOCUMENT_MOCK_UPLOADED: `Documento recibido${named ? `: ${named}` : ''}`,
+      DOCUMENT_UPLOADED: `Documento subido${named ? `: ${named}` : ''}`,
+      CLIENT_DOCUMENT_UPLOADED: `Documento recibido del cliente${named ? `: ${named}` : ''}`,
       DOCUMENT_APPROVED: `Documento aprobado${named ? `: ${named}` : ''}`,
       DOCUMENT_OBSERVED: `Documento observado${named ? `: ${named}` : ''}`,
       DOCUMENT_REJECTED: `Documento rechazado${named ? `: ${named}` : ''}`,
@@ -237,6 +239,8 @@ export class DashboardService {
       CLIENT_CREATED: 'Nuevo cliente disponible en la cartera.',
       WORKSPACE_CREATED: 'Nuevo proceso listo para coordinar.',
       DOCUMENT_MOCK_UPLOADED: 'Archivo registrado para revision.',
+      DOCUMENT_UPLOADED: 'Archivo subido por el equipo.',
+      CLIENT_DOCUMENT_UPLOADED: 'Archivo subido desde el portal cliente.',
       DELIVERY_SENT: 'Documentos compartidos con el cliente.',
     };
 
