@@ -183,16 +183,6 @@ export class DocumentsService {
         include: documentInclude,
       });
 
-      if (
-        request.status === DocumentRequestStatus.PENDING ||
-        request.status === DocumentRequestStatus.OVERDUE
-      ) {
-        await tx.documentRequest.update({
-          where: { id: request.id },
-          data: { status: DocumentRequestStatus.SUBMITTED },
-        });
-      }
-
       await this.activityLogs.create(
         {
           organizationId,
@@ -286,16 +276,6 @@ export class DocumentsService {
           },
           include: documentInclude,
         });
-
-        if (
-          request.status === DocumentRequestStatus.PENDING ||
-          request.status === DocumentRequestStatus.OVERDUE
-        ) {
-          await tx.documentRequest.update({
-            where: { id: request.id },
-            data: { status: DocumentRequestStatus.SUBMITTED },
-          });
-        }
 
         await this.activityLogs.create(
           {
