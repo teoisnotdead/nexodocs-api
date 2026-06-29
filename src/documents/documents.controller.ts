@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { MAX_UPLOAD_FILE_SIZE_BYTES } from '../common/constants/file-upload';
 import type { AuthenticatedRequest } from '../common/types/authenticated-request';
 import { DocumentsService } from './documents.service';
 import { MockUploadDocumentDto } from './dto/mock-upload-document.dto';
@@ -19,7 +20,7 @@ import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
 const fileUploadInterceptor = FileInterceptor('file', {
   storage: memoryStorage(),
   limits: {
-    fileSize: 25 * 1024 * 1024,
+    fileSize: MAX_UPLOAD_FILE_SIZE_BYTES,
   },
 });
 

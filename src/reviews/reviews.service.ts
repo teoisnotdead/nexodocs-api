@@ -64,6 +64,21 @@ export class ReviewsService {
         include: reviewInclude,
       });
 
+      const shouldCreateObservation =
+        dto.decision === ReviewDecision.REJECTED && Boolean(dto.comment);
+      const observation = shouldCreateObservation
+        ? await tx.observation.create({
+            data: {
+              organizationId,
+              documentId: document.id,
+              documentRequestId: document.documentRequestId,
+              createdById: userId,
+              comment: dto.comment!,
+            },
+            select: { id: true },
+          })
+        : null;
+
       await tx.document.update({
         where: { id: document.id },
         data: {
@@ -97,6 +112,7 @@ export class ReviewsService {
             documentRequestId: document.documentRequestId,
             decision: dto.decision,
             comment: dto.comment,
+            observationId: observation?.id,
           },
         },
         tx,
