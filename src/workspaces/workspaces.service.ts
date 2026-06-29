@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   ClientStatus,
+  DocumentRequestStatus,
   Prisma,
   WorkspaceStatus,
   WorkspaceType,
@@ -28,6 +29,13 @@ const workspaceInclude = {
     },
   },
 } satisfies Prisma.WorkspaceInclude;
+
+const emptyDocumentRequestSummary = {
+  pending: 0,
+  submitted: 0,
+  approved: 0,
+  rejected: 0,
+};
 
 @Injectable()
 export class WorkspacesService {
@@ -62,7 +70,7 @@ export class WorkspacesService {
         : {}),
     };
 
-    const [items, draft, active, waitingClient, inReview, completed] =
+    const [items, active, waitingClient, inReview, completed] =
       await this.prisma.$transaction([
         this.prisma.workspace.findMany({
           where,
@@ -72,13 +80,6 @@ export class WorkspacesService {
             { dueDate: 'asc' },
             { createdAt: 'desc' },
           ],
-        }),
-        this.prisma.workspace.count({
-          where: {
-            organizationId,
-            deletedAt: null,
-            status: WorkspaceStatus.DRAFT,
-          },
         }),
         this.prisma.workspace.count({
           where: {
@@ -109,11 +110,18 @@ export class WorkspacesService {
           },
         }),
       ]);
+    const documentRequestSummaries = await this.documentRequestSummaries(
+      organizationId,
+      items.map((item) => item.id),
+    );
 
     return {
-      items,
+      items: items.map((item) => ({
+        ...item,
+        documentRequestSummary:
+          documentRequestSummaries.get(item.id) ?? emptyDocumentRequestSummary,
+      })),
       summary: {
-        draft,
         active,
         waitingClient,
         inReview,
@@ -196,7 +204,7 @@ export class WorkspacesService {
     await this.ensureClient(organizationId, dto.clientId);
     await this.plansService.assertCanCreateWorkspace(
       organizationId,
-      dto.status ?? WorkspaceStatus.DRAFT,
+      WorkspaceStatus.ACTIVE,
     );
 
     return this.prisma.$transaction(async (tx) => {
@@ -322,7 +330,7 @@ export class WorkspacesService {
     userId: string,
     dto: CreateWorkspaceDto,
   ): Prisma.WorkspaceUncheckedCreateInput {
-    const status = dto.status ?? WorkspaceStatus.DRAFT;
+    const status = WorkspaceStatus.ACTIVE;
 
     return {
       organizationId,
@@ -335,7 +343,6 @@ export class WorkspacesService {
       periodMonth: dto.periodMonth,
       dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
       status,
-      closedAt: status === WorkspaceStatus.COMPLETED ? new Date() : undefined,
     };
   }
 
@@ -366,5 +373,69 @@ export class WorkspacesService {
     }
 
     return data;
+  }
+
+  private async documentRequestSummaries(
+    organizationId: string,
+    workspaceIds: string[],
+  ) {
+    const summaries = new Map<
+      string,
+      typeof emptyDocumentRequestSummary
+    >();
+
+    if (workspaceIds.length === 0) {
+      return summaries;
+    }
+
+    const groups = await this.prisma.documentRequest.groupBy({
+      by: ['workspaceId', 'status'],
+      where: {
+        organizationId,
+        workspaceId: { in: workspaceIds },
+      },
+      _count: { _all: true },
+    });
+
+    for (const group of groups) {
+      const summary = summaries.get(group.workspaceId) ?? {
+        ...emptyDocumentRequestSummary,
+      };
+      const count = group._count._all;
+
+      if (this.isPendingRequestStatus(group.status)) {
+        summary.pending += count;
+      } else if (this.isSubmittedRequestStatus(group.status)) {
+        summary.submitted += count;
+      } else if (group.status === DocumentRequestStatus.APPROVED) {
+        summary.approved += count;
+      } else {
+        summary.rejected += count;
+      }
+
+      summaries.set(group.workspaceId, summary);
+    }
+
+    return summaries;
+  }
+
+  private isPendingRequestStatus(status: DocumentRequestStatus) {
+    const pendingStatuses: DocumentRequestStatus[] = [
+      DocumentRequestStatus.DRAFT,
+      DocumentRequestStatus.PENDING,
+      DocumentRequestStatus.OVERDUE,
+    ];
+
+    return pendingStatuses.includes(status);
+  }
+
+  private isSubmittedRequestStatus(status: DocumentRequestStatus) {
+    const submittedStatuses: DocumentRequestStatus[] = [
+      DocumentRequestStatus.SUBMITTED,
+      DocumentRequestStatus.RESUBMITTED,
+      DocumentRequestStatus.IN_REVIEW,
+    ];
+
+    return submittedStatuses.includes(status);
   }
 }

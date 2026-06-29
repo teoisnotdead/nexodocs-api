@@ -90,6 +90,25 @@ const allowedTransitions: Record<
   CANCELLED: [],
 };
 
+const visibleStatusGroups = {
+  pending: [
+    DocumentRequestStatus.DRAFT,
+    DocumentRequestStatus.PENDING,
+    DocumentRequestStatus.OVERDUE,
+  ],
+  submitted: [
+    DocumentRequestStatus.SUBMITTED,
+    DocumentRequestStatus.RESUBMITTED,
+    DocumentRequestStatus.IN_REVIEW,
+  ],
+  approved: [DocumentRequestStatus.APPROVED],
+  rejected: [
+    DocumentRequestStatus.OBSERVED,
+    DocumentRequestStatus.REJECTED,
+    DocumentRequestStatus.CANCELLED,
+  ],
+};
+
 @Injectable()
 export class DocumentRequestsService {
   constructor(
@@ -100,7 +119,7 @@ export class DocumentRequestsService {
   async list(organizationId: string, workspaceId: string) {
     await this.ensureWorkspace(organizationId, workspaceId);
 
-    const [items, pending, submitted, inReview, observed, approved] =
+    const [items, pending, submitted, approved, rejected] =
       await this.prisma.$transaction([
         this.prisma.documentRequest.findMany({
           where: { organizationId, workspaceId },
@@ -115,28 +134,14 @@ export class DocumentRequestsService {
           where: {
             organizationId,
             workspaceId,
-            status: DocumentRequestStatus.PENDING,
+            status: { in: visibleStatusGroups.pending },
           },
         }),
         this.prisma.documentRequest.count({
           where: {
             organizationId,
             workspaceId,
-            status: DocumentRequestStatus.SUBMITTED,
-          },
-        }),
-        this.prisma.documentRequest.count({
-          where: {
-            organizationId,
-            workspaceId,
-            status: DocumentRequestStatus.IN_REVIEW,
-          },
-        }),
-        this.prisma.documentRequest.count({
-          where: {
-            organizationId,
-            workspaceId,
-            status: DocumentRequestStatus.OBSERVED,
+            status: { in: visibleStatusGroups.submitted },
           },
         }),
         this.prisma.documentRequest.count({
@@ -146,6 +151,13 @@ export class DocumentRequestsService {
             status: DocumentRequestStatus.APPROVED,
           },
         }),
+        this.prisma.documentRequest.count({
+          where: {
+            organizationId,
+            workspaceId,
+            status: { in: visibleStatusGroups.rejected },
+          },
+        }),
       ]);
 
     return {
@@ -153,9 +165,8 @@ export class DocumentRequestsService {
       summary: {
         pending,
         submitted,
-        inReview,
-        observed,
         approved,
+        rejected,
       },
     };
   }

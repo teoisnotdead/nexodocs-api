@@ -608,7 +608,7 @@ export class DocumentsService {
       status === DocumentRequestStatus.OBSERVED ||
       status === DocumentRequestStatus.REJECTED
     ) {
-      return DocumentRequestStatus.RESUBMITTED;
+      return DocumentRequestStatus.SUBMITTED;
     }
 
     if (

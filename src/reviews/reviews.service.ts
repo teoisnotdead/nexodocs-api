@@ -149,7 +149,7 @@ export class ReviewsService {
 
       await tx.documentRequest.update({
         where: { id: document.documentRequestId },
-        data: { status: DocumentRequestStatus.OBSERVED },
+        data: { status: DocumentRequestStatus.REJECTED },
       });
 
       await this.activityLogs.create(

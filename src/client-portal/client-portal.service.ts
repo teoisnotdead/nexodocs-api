@@ -288,7 +288,7 @@ export class ClientPortalService {
 
   async listDocumentRequests(token: string, sessionToken: string | null) {
     const access = await this.verifyPortalSession(token, sessionToken);
-    const [items, pending, submitted, inReview, observed, approved] =
+    const [items, pending, submitted, approved, rejected] =
       await this.prisma.$transaction([
         this.prisma.documentRequest.findMany({
           where: this.visibleRequestWhere(access),
@@ -316,31 +316,25 @@ export class ClientPortalService {
         this.prisma.documentRequest.count({
           where: {
             ...this.visibleRequestWhere(access),
-            status: 'PENDING',
+            status: { in: ['DRAFT', 'PENDING', 'OVERDUE'] },
           },
         }),
         this.prisma.documentRequest.count({
           where: {
             ...this.visibleRequestWhere(access),
-            status: 'SUBMITTED',
-          },
-        }),
-        this.prisma.documentRequest.count({
-          where: {
-            ...this.visibleRequestWhere(access),
-            status: 'IN_REVIEW',
-          },
-        }),
-        this.prisma.documentRequest.count({
-          where: {
-            ...this.visibleRequestWhere(access),
-            status: 'OBSERVED',
+            status: { in: ['SUBMITTED', 'RESUBMITTED', 'IN_REVIEW'] },
           },
         }),
         this.prisma.documentRequest.count({
           where: {
             ...this.visibleRequestWhere(access),
             status: 'APPROVED',
+          },
+        }),
+        this.prisma.documentRequest.count({
+          where: {
+            ...this.visibleRequestWhere(access),
+            status: { in: ['OBSERVED', 'REJECTED', 'CANCELLED'] },
           },
         }),
       ]);
@@ -351,9 +345,8 @@ export class ClientPortalService {
       summary: {
         pending,
         submitted,
-        inReview,
-        observed,
         approved,
+        rejected,
       },
     };
   }
