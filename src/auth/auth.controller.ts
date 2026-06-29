@@ -32,7 +32,12 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<AuthResponse> {
     const result = await this.authService.register(dto, this.metadata(request));
-    this.setCookies(response, result.accessToken, result.refreshToken);
+    this.setCookies(
+      response,
+      result.accessToken,
+      result.refreshToken,
+      result.rememberMe,
+    );
 
     return { user: result.user };
   }
@@ -45,7 +50,12 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<AuthResponse> {
     const result = await this.authService.login(dto, this.metadata(request));
-    this.setCookies(response, result.accessToken, result.refreshToken);
+    this.setCookies(
+      response,
+      result.accessToken,
+      result.refreshToken,
+      result.rememberMe,
+    );
 
     return { user: result.user };
   }
@@ -66,7 +76,12 @@ export class AuthController {
       refreshToken,
       this.metadata(request),
     );
-    this.setCookies(response, result.accessToken, result.refreshToken);
+    this.setCookies(
+      response,
+      result.accessToken,
+      result.refreshToken,
+      result.rememberMe,
+    );
 
     return { user: result.user };
   }
@@ -89,10 +104,13 @@ export class AuthController {
     response: Response,
     accessToken: string,
     refreshToken: string,
+    rememberMe: boolean,
   ) {
     setAuthCookies(response, accessToken, refreshToken, {
       secure: this.cookieSecure(),
+      accessTtlSeconds: this.authService.accessTtlSeconds(),
       refreshDays: this.authService.refreshDays(),
+      rememberMe,
     });
   }
 

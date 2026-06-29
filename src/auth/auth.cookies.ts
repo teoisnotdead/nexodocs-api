@@ -2,7 +2,9 @@ import type { Response } from 'express';
 
 type CookieConfig = {
   secure: boolean;
+  accessTtlSeconds: number;
   refreshDays: number;
+  rememberMe: boolean;
 };
 
 export function setAuthCookies(
@@ -16,14 +18,16 @@ export function setAuthCookies(
     sameSite: 'lax',
     secure: config.secure,
     path: '/',
-    maxAge: 15 * 60 * 1000,
+    maxAge: config.accessTtlSeconds * 1000,
   });
   response.cookie('refresh_token', refreshToken, {
     httpOnly: true,
     sameSite: 'lax',
     secure: config.secure,
     path: '/auth/refresh',
-    maxAge: config.refreshDays * 24 * 60 * 60 * 1000,
+    ...(config.rememberMe
+      ? { maxAge: config.refreshDays * 24 * 60 * 60 * 1000 }
+      : {}),
   });
 }
 

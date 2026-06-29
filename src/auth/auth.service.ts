@@ -87,7 +87,7 @@ export class AuthService {
         });
       });
 
-      return this.createSessionResponse(user, metadata);
+      return this.createSessionResponse(user, metadata, true);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -113,11 +113,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    return this.createSessionResponse(user, metadata);
+    return this.createSessionResponse(user, metadata, dto.rememberMe ?? false);
   }
 
   async refresh(refreshToken: string, metadata: RequestMetadata) {
     const payload = await this.verifyRefreshToken(refreshToken);
+    const rememberMe = payload.rememberMe ?? true;
     const session = await this.prisma.authSession.findUnique({
       where: { id: payload.sessionId },
       select: {
@@ -140,18 +141,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    const tokens = await this.signTokens(session.user, session.id);
+    const tokens = await this.signTokens(session.user, session.id, rememberMe);
     await this.prisma.authSession.update({
       where: { id: session.id },
       data: {
         refreshTokenHash: await argon2.hash(tokens.refreshToken),
         userAgent: metadata.userAgent,
         ipAddress: metadata.ipAddress,
-        expiresAt: this.refreshExpiresAt(),
+        expiresAt: this.refreshExpiresAt(rememberMe),
       },
     });
 
-    return { user: this.toUserResponse(session.user), ...tokens };
+    return { user: this.toUserResponse(session.user), rememberMe, ...tokens };
   }
 
   async logout(refreshToken: string | null) {
@@ -190,6 +191,7 @@ export class AuthService {
   private async createSessionResponse(
     user: SelectedUser,
     metadata: RequestMetadata,
+    rememberMe: boolean,
   ) {
     const session = await this.prisma.authSession.create({
       data: {
@@ -197,21 +199,25 @@ export class AuthService {
         refreshTokenHash: 'pending',
         userAgent: metadata.userAgent,
         ipAddress: metadata.ipAddress,
-        expiresAt: this.refreshExpiresAt(),
+        expiresAt: this.refreshExpiresAt(rememberMe),
       },
       select: { id: true },
     });
-    const tokens = await this.signTokens(user, session.id);
+    const tokens = await this.signTokens(user, session.id, rememberMe);
 
     await this.prisma.authSession.update({
       where: { id: session.id },
       data: { refreshTokenHash: await argon2.hash(tokens.refreshToken) },
     });
 
-    return { user: this.toUserResponse(user), ...tokens };
+    return { user: this.toUserResponse(user), rememberMe, ...tokens };
   }
 
-  private async signTokens(user: SelectedUser, sessionId: string) {
+  private async signTokens(
+    user: SelectedUser,
+    sessionId: string,
+    rememberMe: boolean,
+  ) {
     const authUser = this.toUserResponse(user);
     const payload: TokenPayload = {
       userId: authUser.id,
@@ -219,6 +225,7 @@ export class AuthService {
       membershipId: authUser.membershipId,
       role: authUser.role,
       sessionId,
+      rememberMe,
     };
     const accessToken = await this.jwtService.signAsync(payload, {
       secret: this.accessSecret(),
@@ -226,7 +233,7 @@ export class AuthService {
     });
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: this.refreshSecret(),
-      expiresIn: this.refreshDays() * 24 * 60 * 60,
+      expiresIn: this.refreshTtlSeconds(rememberMe),
     });
 
     return { accessToken, refreshToken };
@@ -279,13 +286,29 @@ export class AuthService {
     return Number(this.configService.get<string>('JWT_REFRESH_DAYS') ?? 30);
   }
 
-  private accessTtlSeconds(): number {
-    const configured = this.configService.get<string>('JWT_ACCESS_TTL_SECONDS');
-
-    return configured ? Number(configured) : 15 * 60;
+  private sessionRefreshDays(): number {
+    return Number(
+      this.configService.get<string>('JWT_SESSION_REFRESH_DAYS') ?? 1,
+    );
   }
 
-  private refreshExpiresAt(): Date {
-    return new Date(Date.now() + this.refreshDays() * 24 * 60 * 60 * 1000);
+  accessTtlSeconds(): number {
+    const configured = this.configService.get<string>('JWT_ACCESS_TTL_SECONDS');
+
+    return configured ? Number(configured) : 60 * 60;
+  }
+
+  private refreshTtlSeconds(rememberMe: boolean): number {
+    return this.refreshLifetimeDays(rememberMe) * 24 * 60 * 60;
+  }
+
+  private refreshExpiresAt(rememberMe: boolean): Date {
+    return new Date(
+      Date.now() + this.refreshLifetimeDays(rememberMe) * 24 * 60 * 60 * 1000,
+    );
+  }
+
+  private refreshLifetimeDays(rememberMe: boolean): number {
+    return rememberMe ? this.refreshDays() : this.sessionRefreshDays();
   }
 }

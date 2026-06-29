@@ -25,4 +25,5 @@ export type TokenPayload = {
   membershipId: string;
   role: MembershipRole;
   sessionId: string;
+  rememberMe?: boolean;
 };
